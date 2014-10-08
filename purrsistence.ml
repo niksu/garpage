@@ -99,18 +99,6 @@ type 'a valerie = { v : 'a; name : string };;
 let add = { v = (+); name = "add" };;
 let value i = { v = i; name = string_of_int i};;
 
-(*Argh, not having first-class selectors sucks
-let plus p x y z =
-   let xy = Apply2 (p add, Id (p x), Id (p y))
-   in Apply2 (p add, Id (p z), xy)
-;;
-
-let plus_fun = plus (fun r -> r.v);;
-
-plus_fun (value 4) (value 5) (value 6)
-|> recompute;;
-*)
-
 (*Our new plus function -- which accepts selectors to indicate whether we're
   actual value, or the "serialisation"*)
 let plus s_f s_v x y z =
