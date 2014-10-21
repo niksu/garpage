@@ -17,9 +17,9 @@ at will to recreate the transient object (assuming that the persistent objects
 are available).
 
 This file contains a sketch of an idea to do this. We specify computations in
-terms of fine-grained "snapshots" the application of functions. The functions
+terms of fine-grained "snapshots" of the application of functions. The functions
 themselves are pure, and the computations ultimately rely on values that should
-be persistent (thought this is not enforced in this model). Then we can replay
+be persistent (though this is not enforced in this model). Then we can replay
 the computation.
 
 Ideally we might want to keep track of intermediate stages of the computation
@@ -88,7 +88,7 @@ plus' 4 5 6
 (*
 So far, so good.
 Now let's tweak functions a bit to carry names as well as functions.
-This will provide us a weak form of serialisation.
+This will provide us with a weak form of serialisation.
 *)
 
 (*Instead of building transient values using functions, we will build them out
