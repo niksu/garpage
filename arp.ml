@@ -87,6 +87,7 @@ TODO
 type arp_op =
   | Request (*i.e., ares_op$REQUEST in RFC826*)
   | Reply (*i.e., ares_op$REPLY in RFC826*)
+;;
 
 (*NOTE excludes Ethernet header info*)
 type arp_packet_format = {
@@ -102,9 +103,10 @@ type arp_packet_format = {
   ar_spa : Ipaddr.V4.t;
   ar_tha : Macaddr.t;
   ar_tpa : Ipaddr.V4.t;
-}
+};;
 
-type timestamp = float (*FIXME or use Int64.t?*)
+(*FIXME is there a Mirage equivalent for this? Also for Unix.time*)
+type timestamp = float;;
 
 type entry_state =
   (*Address value, and the (local) timestamp the value was added.
@@ -114,6 +116,7 @@ type entry_state =
   (*Indication that we don't have the info yet, but we also provide the time
     when we requested the info, to be used for timing out.*)
   | Waiting of timestamp
+;;
 
 type state = (Ipaddr.V4.t, entry_state) Hashtbl.t;;
 
