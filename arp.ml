@@ -141,7 +141,8 @@ let lookup state ip_addr =
   else
     (*FIXME here should make non-blocking call to request an ARP record from the
        network*)
-    None;;
+    None
+;;
 
 (*FIXME need network interface*)
 let send (p : arp_packet_format) (*interface*) =
@@ -151,17 +152,17 @@ let my_ip_address : Ipaddr.V4.t = Ipaddr.V4.make 192 168 1 2;; (*FIXME*)
 let my_mac_address : Macaddr.t = Macaddr.of_string_exn "0f:ff:ff:ff:ff:ff";; (*FIXME*)
 
 (*Implements the algorithm described under "Packet Reception" in RFC826*)
-let receive state (p : arp_packet_format) =
+let receive (st : state) (p : arp_packet_format) =
   (*NOTE these invariants were stated in comments earlier*)
   assert (p.ar_hrd = 1);
   assert (p.ar_pro = 6);
   assert (p.ar_hln = 6);
   assert (p.ar_pln = 4);
   let merge_flag =
-    if Hashtbl.mem state p.ar_spa then
+    if Hashtbl.mem st p.ar_spa then
       begin
         Result (p.ar_sha, Unix.time ())
-        |> Hashtbl.replace state p.ar_spa;
+        |> Hashtbl.replace st p.ar_spa;
         true
       end
     else false in
@@ -169,7 +170,7 @@ let receive state (p : arp_packet_format) =
     begin
       if not merge_flag then
         Result (p.ar_sha, Unix.time ())
-        |> Hashtbl.add state p.ar_spa;
+        |> Hashtbl.add st p.ar_spa;
 
       if p.ar_op = Request then
         {
