@@ -3,14 +3,9 @@
    Specialised to IP.
 *)
 
-
-(*FIXME representation of these values too transparent?*)
-type ip_addr = int (*32 bits needed to represent IP address -- assuming v4*)
-type mac_addr = int (*48 bits are needed to represent a MAC address*)
-
 type state
 
-val empty_state : () -> state
+val empty_state : unit -> state
 
 (*FIXME use standard names for these functions, from standard APIs
   @samoht suggested using this as reference:
@@ -18,10 +13,10 @@ val empty_state : () -> state
 *)
 
 (*Adds an address pair to the cache.*)
-val cache : state -> ip_addr * mac_addr -> state
+val cache : state -> Ipaddr.V4.t * Macaddr.t -> state
 
 (*Might need to query the network to perform the lookup.*)
-val lookup : state -> ip_addr -> mac_addr option
+val lookup : state -> Ipaddr.V4.t -> Macaddr.t option
 (*it's OK to return None. From RFC826:
     "If it does not [find the IP address in the resolution table], it probably informs the caller that it is throwing the
 packet away (on the assumption the packet will be retransmitted

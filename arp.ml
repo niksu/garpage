@@ -30,10 +30,6 @@
    the network stack? To be determined...
 *)
 
-(*NOTE I'm assuming a 64-bit precision for "int".*)
-type ip_addr = int;; (*32 bits needed*)
-type mac_addr = int;; (*48 bits needed*)
-
 (*NOTE this implementation is specialised for Ethernet and IP,
   i.e., using the language of RFC826 I'm assuming that
   ar$pro={ether_type$DOD_INTERNET} and ar$hrd={ares_hrd$Ethernet}.
@@ -99,10 +95,10 @@ type arp_packet_format = {
   ar_hln : int; (*NOTE must be = 6*)
   ar_pln : int; (*NOTE must be = 4*)
   ar_op : arp_op;
-  ar_sha : int;
-  ar_spa : int;
-  ar_tha : int;
-  ar_tpa : int;
+  ar_sha : Macaddr.t;
+  ar_spa : Ipaddr.V4.t;
+  ar_tha : Macaddr.t;
+  ar_tpa : Ipaddr.V4.t;
 }
 
 type timestamp = float (*FIXME or use Int64.t?*)
@@ -111,12 +107,12 @@ type entry_state =
   (*Address value, and the (local) timestamp the value was added.
     The timestamp can be used to purge the value, and/or request a refreshing,
     if the value is deemed to be too old.*)
-  | Result of mac_addr * timestamp
+  | Result of Macaddr.t * timestamp
   (*Indication that we don't have the info yet, but we also provide the time
     when we requested the info, to be used for timing out.*)
   | Waiting of timestamp
 
-type state = (ip_addr, entry_state) Hashtbl.t;;
+type state = (Ipaddr.V4.t, entry_state) Hashtbl.t;;
 
 (*Initial size of the hashtable*)
 let kINIT_HT_SIZE = 0;;
@@ -143,8 +139,8 @@ let lookup state ip_addr =
 let send (p : arp_packet_format) (*interface*) =
   failwith "TODO"
 ;;
-let my_ip_address : int = 0;; (*FIXME*)
-let my_mac_address : int = 0;; (*FIXME*)
+let my_ip_address : Ipaddr.V4.t = Ipaddr.V4.make 192 168 1 2;; (*FIXME*)
+let my_mac_address : Macaddr.t = Macaddr.of_string_exn "0f:ff:ff:ff:ff:ff";; (*FIXME*)
 
 (*Implements the algorithm described under "Packet Reception" in RFC826*)
 let receive state (p : arp_packet_format) =
