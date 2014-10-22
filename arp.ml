@@ -120,8 +120,13 @@ type entry_state =
 
 type state = (Ipaddr.V4.t, entry_state) Hashtbl.t;;
 
-(*Initial size of the hashtable*)
+(*FIXME obtain these values from parameters to a functor*)
+(*Initial size of the hashtable.*)
 let kINIT_HT_SIZE = 0(*FIXME fudge*);;
+(*Seconds before an ARP request is considered to have timed out.*)
+let kREQUEST_TIMEOUT = 300.(*FIXME fudge*);;
+(*Seconds before an entry in the table is considered to have expired.*)
+let kMAX_ENTRY_AGE = 300.(*FIXME fudge*);;
 
 let empty_state () : state = Hashtbl.create ~random:false kINIT_HT_SIZE;;
 
@@ -137,10 +142,23 @@ let cache (st : state) ((ip_addr : Ipaddr.V4.t), (mac_addr : Macaddr.t)) =
   st
 ;;
 
-(*Might need to query the network to perform the lookup. Returns future.*)
-let lookup state ip_addr =
-  if Hashtbl.mem state ip_addr then
-    Some (Hashtbl.find state ip_addr)
+(*Performs the lookup on the table. It queries the network in these cases:
+  - Table lacks an entry for the key we're looking for.
+  - The table entry has aged too much.
+*)
+let lookup (st : state) (ip_addr : Ipaddr.V4.t) : Macaddr.t option =
+  if Hashtbl.mem st ip_addr then
+    match Hashtbl.find st ip_addr with
+    | Waiting ts ->
+      if ts < Unix.time () -. kREQUEST_TIMEOUT then
+        (); (*FIXME resend request*)
+      None
+    | Result (mac_addr, ts) ->
+      if ts < Unix.time () -. kMAX_ENTRY_AGE then
+        (); (*FIXME resend request. Could also change the table, to remove the
+              entry. Shall we do this eagerly or lazily?*)
+      (*NOTE we only guarantee freshness until "age" value.*)
+      Some mac_addr
   else
     (*FIXME here should make non-blocking call to request an ARP record from the
        network*)
