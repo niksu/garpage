@@ -85,11 +85,14 @@ TODO
 (*Raw ARP opcodes*)
 (*FIXME classify them into more refined set of operations, based on RFC5527?*)
 type arp_op =
-  | Request (*ares_op$REQUEST*)
-  | Reply (*ares_op$REPLY*)
+  | Request (*i.e., ares_op$REQUEST in RFC826*)
+  | Reply (*i.e., ares_op$REPLY in RFC826*)
 
 (*NOTE excludes Ethernet header info*)
 type arp_packet_format = {
+  (*FIXME use polymorphic variants instead of ints. Can then implement the
+    checks in the algorithm more easily -- e.g., "?Do I have the hardware type
+    in ar$hrd?"*)
   ar_hrd : int; (*NOTE must be = 1*)
   ar_pro : int; (*NOTE must be = 6*)
   ar_hln : int; (*NOTE must be = 6*)
@@ -115,16 +118,21 @@ type entry_state =
 type state = (Ipaddr.V4.t, entry_state) Hashtbl.t;;
 
 (*Initial size of the hashtable*)
-let kINIT_HT_SIZE = 0;;
+let kINIT_HT_SIZE = 0(*FIXME fudge*);;
 
 let empty_state () : state = Hashtbl.create ~random:false kINIT_HT_SIZE;;
 
-(*FIXME make private*)
-(*Adds an address pair to the cache.*)
-let cache state (ip_addr, mac_addr) =
-  let state' = Hashtbl.copy state in (*NOTE duplication*)
-  Hashtbl.add state' ip_addr mac_addr;
-  state';;
+(*Adds an address pair to the cache. If mapping already exists for ip_addr then
+  it is removed.*)
+let cache (st : state) ((ip_addr : Ipaddr.V4.t), (mac_addr : Macaddr.t)) =
+  (*NOTE deliberate shadowing, to avoid manipulating the original st value.
+    Hashtbl isn't pure*)
+  let st = Hashtbl.copy st in (*NOTE duplication to avoid manipulating original st*)
+  if Hashtbl.mem st ip_addr then
+    Hashtbl.remove st ip_addr;
+  Hashtbl.add st ip_addr (Result (mac_addr, Unix.time ()));
+  st
+;;
 
 (*Might need to query the network to perform the lookup. Returns future.*)
 let lookup state ip_addr =
@@ -149,9 +157,6 @@ let receive state (p : arp_packet_format) =
   assert (p.ar_pro = 6);
   assert (p.ar_hln = 6);
   assert (p.ar_pln = 4);
-  (*FIXME use polymorphic variants instead of ints. Can then implement the
-    checks in the algorithm more easily -- e.g., "?Do I have the hardware type
-    in ar$hrd?"*)
   let merge_flag =
     if Hashtbl.mem state p.ar_spa then
       begin
