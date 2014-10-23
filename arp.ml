@@ -145,8 +145,17 @@ let cache (st : state) ((ip_addr : Ipaddr.V4.t), (mac_addr : Macaddr.t)) =
 ;;
 
 
-module Make (Ethif : V1.ETHIF) (Params : Arp_Params) =
+module Make (Ethif : V1.ETHIF with (*FIXME ETHIF seems too high-level, since it
+                                     already references Arp. Perhaps should use
+                                     V1.NETWORK?*)
+              (*FIXME maybe specialising these types too early*)
+              type macaddr = Macaddr.t and
+              type ipv4addr = Ipaddr.V4.t)
+         (Params : Arp_Params) =
 struct
+
+  (*FIXME hack: should take id as parameter*)
+  let device_state : Ethif.t = failwith "Some ID"
 
   let empty_state () : state = Hashtbl.create ~random:false Params.init_table_size;;
 
@@ -178,7 +187,7 @@ struct
     failwith "TODO"
   ;;
   let my_ip_address : Ipaddr.V4.t = Ipaddr.V4.make 192 168 1 2;; (*FIXME*)
-  let my_mac_address : Macaddr.t = Macaddr.of_string_exn "0f:ff:ff:ff:ff:ff";; (*FIXME*)
+  let my_mac_address : Macaddr.t = Ethif.mac device_state;;
 
   (*Implements the algorithm described under "Packet Reception" in RFC826*)
   let receive (st : state) (p : arp_packet_format) =
