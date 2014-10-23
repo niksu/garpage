@@ -130,6 +130,8 @@ let kMAX_ENTRY_AGE = 300.(*FIXME fudge*);;
 
 let empty_state () : state = Hashtbl.create ~random:false kINIT_HT_SIZE;;
 
+(*FIXME this function might be redundant, because the algorithm implemented in
+  "receive" seems to have the checks done by this function*)
 (*Adds an address pair to the cache. If mapping already exists for ip_addr then
   it is removed.*)
 let cache (st : state) ((ip_addr : Ipaddr.V4.t), (mac_addr : Macaddr.t)) =
