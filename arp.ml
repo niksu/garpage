@@ -128,44 +128,50 @@ type entry_state =
   | Waiting of timestamp
 ;;
 
-type state = (Ipaddr.V4.t, entry_state) Hashtbl.t;;
-
-(*FIXME this function might be redundant, because the algorithm implemented in
-  "receive" seems to have the checks done by this function*)
-(*Adds an address pair to the cache. If mapping already exists for ip_addr then
-  it is removed.*)
-let cache (st : state) ((ip_addr : Ipaddr.V4.t), (mac_addr : Macaddr.t)) =
-  (*NOTE deliberate shadowing, to avoid manipulating the original st value.
-    Hashtbl isn't pure*)
-  let st = Hashtbl.copy st in (*NOTE duplication to avoid manipulating original st*)
-  if Hashtbl.mem st ip_addr then
-    Hashtbl.remove st ip_addr;
-  Hashtbl.add st ip_addr (Result (mac_addr, Unix.time ()));
-  st
+type state =
+  {
+    (*NOTE to implement the RFC properly, we could not require the protocol to
+      be IPv4*)
+    protocol_addresses : Ipaddr.V4.t list;
+    address_mapping : (Ipaddr.V4.t, entry_state) Hashtbl.t
+  }
 ;;
 
 
-module Make (Ethif : V1.ETHIF with (*FIXME ETHIF seems too high-level, since it
-                                     already references Arp. Perhaps should use
-                                     V1.NETWORK?*)
-              (*FIXME maybe specialising these types too early*)
-              type macaddr = Macaddr.t and
-              type ipv4addr = Ipaddr.V4.t)
+module Make (N : V1.NETWORK with
+              type macaddr = Macaddr.t)
          (Params : Arp_Params) =
 struct
 
-  (*FIXME hack: should take id as parameter*)
-  let device_state : Ethif.t = failwith "Some ID"
+  (*FIXME hack: should take this as parameter*)
+  let device_state : N.t = failwith "Some ID"
 
-  let empty_state () : state = Hashtbl.create ~random:false Params.init_table_size;;
+  let empty_state () : state =
+    {
+      protocol_addresses = [];
+      address_mapping = Hashtbl.create ~random:false Params.init_table_size
+    }
+  ;;
+
+  let bind_ip_address (st : state) (ip_addr : Ipaddr.V4.t) =
+    (*FIXME might need to use Ipaddr's comparator*)
+    assert (not (List.mem ip_addr st.protocol_addresses));
+    { st with protocol_addresses = ip_addr :: st.protocol_addresses}
+  ;;
+
+  let unbind_ip_address_exn (st : state) (ip_addr : Ipaddr.V4.t) =
+    (*FIXME might need to use Ipaddr's comparator*)
+    assert (List.mem ip_addr st.protocol_addresses);
+    failwith "TODO"
+  ;;
 
   (*Performs the lookup on the table. It queries the network in these cases:
     - Table lacks an entry for the key we're looking for.
     - The table entry has aged too much.
   *)
   let lookup (st : state) (ip_addr : Ipaddr.V4.t) : Macaddr.t option =
-    if Hashtbl.mem st ip_addr then
-      match Hashtbl.find st ip_addr with
+    if Hashtbl.mem st.address_mapping ip_addr then
+      match Hashtbl.find st.address_mapping ip_addr with
       | Waiting ts ->
         if ts < Unix.time () -. Params.request_timeout then
           (); (*FIXME resend request*)
@@ -182,33 +188,35 @@ struct
       None
   ;;
 
-  (*FIXME need network interface*)
+  (*TODO i think need to use N.write, but need to define buffer type before
+    that.*)
   let send (p : arp_packet_format) (*interface*) =
     failwith "TODO"
   ;;
-  let my_ip_address : Ipaddr.V4.t = Ipaddr.V4.make 192 168 1 2;; (*FIXME*)
-  let my_mac_address : Macaddr.t = Ethif.mac device_state;;
 
   (*Implements the algorithm described under "Packet Reception" in RFC826*)
   let receive (st : state) (p : arp_packet_format) =
+    (*FIXME Hashtbl.t is mutable, and here we don't avoid mutating the existing
+      state value*)
     (*NOTE these invariants were stated in comments earlier*)
     assert (p.ar_hrd = 1);
     assert (p.ar_pro = 6);
     assert (p.ar_hln = 6);
     assert (p.ar_pln = 4);
     let merge_flag =
-      if Hashtbl.mem st p.ar_spa then
+      if Hashtbl.mem st.address_mapping p.ar_spa then
         begin
           Result (p.ar_sha, Unix.time ())
-          |> Hashtbl.replace st p.ar_spa;
+          |> Hashtbl.replace st.address_mapping p.ar_spa;
           true
         end
       else false in
-    if p.ar_tpa = my_ip_address then
+    if List.mem p.ar_tpa st.protocol_addresses then (*FIXME might need to use
+                                                      Ipaddr's comparator*)
       begin
         if not merge_flag then
           Result (p.ar_sha, Unix.time ())
-          |> Hashtbl.add st p.ar_spa;
+          |> Hashtbl.add st.address_mapping p.ar_spa;
 
         if p.ar_op = Request then
           {
@@ -217,8 +225,8 @@ struct
             ar_hln = 6;
             ar_pln = 4;
             ar_op = Reply;
-            ar_sha = my_mac_address;
-            ar_spa = my_ip_address;
+            ar_sha = N.mac device_state;
+            ar_spa = p.ar_tpa;
             ar_tha = p.ar_sha;
             ar_tpa = p.ar_spa;
           }
