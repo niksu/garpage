@@ -82,6 +82,16 @@ TODO
 - Allowed number of retransmitions, and min&max gaps between them.
 *)
 
+
+module type Arp_Params = sig
+  (*Initial size of the hashtable.*)
+  val init_table_size : int
+  (*Seconds before an ARP request is considered to have timed out.*)
+  val request_timeout : float
+  (*Seconds before an entry in the table is considered to have expired.*)
+  val max_entry_age : float
+end
+
 (*Raw ARP opcodes*)
 (*FIXME classify them into more refined set of operations, based on RFC5527?*)
 type arp_op =
@@ -120,16 +130,6 @@ type entry_state =
 
 type state = (Ipaddr.V4.t, entry_state) Hashtbl.t;;
 
-(*FIXME obtain these values from parameters to a functor*)
-(*Initial size of the hashtable.*)
-let kINIT_HT_SIZE = 0(*FIXME fudge*);;
-(*Seconds before an ARP request is considered to have timed out.*)
-let kREQUEST_TIMEOUT = 300.(*FIXME fudge*);;
-(*Seconds before an entry in the table is considered to have expired.*)
-let kMAX_ENTRY_AGE = 300.(*FIXME fudge*);;
-
-let empty_state () : state = Hashtbl.create ~random:false kINIT_HT_SIZE;;
-
 (*FIXME this function might be redundant, because the algorithm implemented in
   "receive" seems to have the checks done by this function*)
 (*Adds an address pair to the cache. If mapping already exists for ip_addr then
@@ -144,6 +144,11 @@ let cache (st : state) ((ip_addr : Ipaddr.V4.t), (mac_addr : Macaddr.t)) =
   st
 ;;
 
+module Make (Ethif : V1.ETHIF) (Params : Arp_Params) =
+struct
+
+let empty_state () : state = Hashtbl.create ~random:false Params.init_table_size;;
+
 (*Performs the lookup on the table. It queries the network in these cases:
   - Table lacks an entry for the key we're looking for.
   - The table entry has aged too much.
@@ -152,11 +157,11 @@ let lookup (st : state) (ip_addr : Ipaddr.V4.t) : Macaddr.t option =
   if Hashtbl.mem st ip_addr then
     match Hashtbl.find st ip_addr with
     | Waiting ts ->
-      if ts < Unix.time () -. kREQUEST_TIMEOUT then
+      if ts < Unix.time () -. Params.request_timeout then
         (); (*FIXME resend request*)
       None
     | Result (mac_addr, ts) ->
-      if ts < Unix.time () -. kMAX_ENTRY_AGE then
+      if ts < Unix.time () -. Params.max_entry_age then
         (); (*FIXME resend request. Could also change the table, to remove the
               entry. Shall we do this eagerly or lazily?*)
       (*NOTE we only guarantee freshness until "age" value.*)
@@ -215,3 +220,14 @@ let receive (st : state) (p : arp_packet_format) =
 (*Walks the cache, removing expired entries.*)
 let expire state = failwith "TODO";;
 
+end;;
+
+
+module Test_Arp =
+  Make ((*FIXME get this from Mirage*))
+    (struct
+      (*NOTE all these values are fudges*)
+      let init_table_size = 0
+      let request_timeout = 300.
+      let max_entry_age = 300.
+    end)
