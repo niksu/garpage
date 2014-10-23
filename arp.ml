@@ -144,81 +144,82 @@ let cache (st : state) ((ip_addr : Ipaddr.V4.t), (mac_addr : Macaddr.t)) =
   st
 ;;
 
+
 module Make (Ethif : V1.ETHIF) (Params : Arp_Params) =
 struct
 
-let empty_state () : state = Hashtbl.create ~random:false Params.init_table_size;;
+  let empty_state () : state = Hashtbl.create ~random:false Params.init_table_size;;
 
-(*Performs the lookup on the table. It queries the network in these cases:
-  - Table lacks an entry for the key we're looking for.
-  - The table entry has aged too much.
-*)
-let lookup (st : state) (ip_addr : Ipaddr.V4.t) : Macaddr.t option =
-  if Hashtbl.mem st ip_addr then
-    match Hashtbl.find st ip_addr with
-    | Waiting ts ->
-      if ts < Unix.time () -. Params.request_timeout then
-        (); (*FIXME resend request*)
+  (*Performs the lookup on the table. It queries the network in these cases:
+    - Table lacks an entry for the key we're looking for.
+    - The table entry has aged too much.
+  *)
+  let lookup (st : state) (ip_addr : Ipaddr.V4.t) : Macaddr.t option =
+    if Hashtbl.mem st ip_addr then
+      match Hashtbl.find st ip_addr with
+      | Waiting ts ->
+        if ts < Unix.time () -. Params.request_timeout then
+          (); (*FIXME resend request*)
+        None
+      | Result (mac_addr, ts) ->
+        if ts < Unix.time () -. Params.max_entry_age then
+          (); (*FIXME resend request. Could also change the table, to remove the
+                entry. Shall we do this eagerly or lazily?*)
+        (*NOTE we only guarantee freshness until "age" value.*)
+        Some mac_addr
+    else
+      (*FIXME here should make non-blocking call to request an ARP record from the
+        network*)
       None
-    | Result (mac_addr, ts) ->
-      if ts < Unix.time () -. Params.max_entry_age then
-        (); (*FIXME resend request. Could also change the table, to remove the
-              entry. Shall we do this eagerly or lazily?*)
-      (*NOTE we only guarantee freshness until "age" value.*)
-      Some mac_addr
-  else
-    (*FIXME here should make non-blocking call to request an ARP record from the
-       network*)
-    None
-;;
+  ;;
 
-(*FIXME need network interface*)
-let send (p : arp_packet_format) (*interface*) =
-  failwith "TODO"
-;;
-let my_ip_address : Ipaddr.V4.t = Ipaddr.V4.make 192 168 1 2;; (*FIXME*)
-let my_mac_address : Macaddr.t = Macaddr.of_string_exn "0f:ff:ff:ff:ff:ff";; (*FIXME*)
+  (*FIXME need network interface*)
+  let send (p : arp_packet_format) (*interface*) =
+    failwith "TODO"
+  ;;
+  let my_ip_address : Ipaddr.V4.t = Ipaddr.V4.make 192 168 1 2;; (*FIXME*)
+  let my_mac_address : Macaddr.t = Macaddr.of_string_exn "0f:ff:ff:ff:ff:ff";; (*FIXME*)
 
-(*Implements the algorithm described under "Packet Reception" in RFC826*)
-let receive (st : state) (p : arp_packet_format) =
-  (*NOTE these invariants were stated in comments earlier*)
-  assert (p.ar_hrd = 1);
-  assert (p.ar_pro = 6);
-  assert (p.ar_hln = 6);
-  assert (p.ar_pln = 4);
-  let merge_flag =
-    if Hashtbl.mem st p.ar_spa then
+  (*Implements the algorithm described under "Packet Reception" in RFC826*)
+  let receive (st : state) (p : arp_packet_format) =
+    (*NOTE these invariants were stated in comments earlier*)
+    assert (p.ar_hrd = 1);
+    assert (p.ar_pro = 6);
+    assert (p.ar_hln = 6);
+    assert (p.ar_pln = 4);
+    let merge_flag =
+      if Hashtbl.mem st p.ar_spa then
+        begin
+          Result (p.ar_sha, Unix.time ())
+          |> Hashtbl.replace st p.ar_spa;
+          true
+        end
+      else false in
+    if p.ar_tpa = my_ip_address then
       begin
-        Result (p.ar_sha, Unix.time ())
-        |> Hashtbl.replace st p.ar_spa;
-        true
+        if not merge_flag then
+          Result (p.ar_sha, Unix.time ())
+          |> Hashtbl.add st p.ar_spa;
+
+        if p.ar_op = Request then
+          {
+            ar_hrd = 1;
+            ar_pro = 6;
+            ar_hln = 6;
+            ar_pln = 4;
+            ar_op = Reply;
+            ar_sha = my_mac_address;
+            ar_spa = my_ip_address;
+            ar_tha = p.ar_sha;
+            ar_tpa = p.ar_spa;
+          }
+          |> send
       end
-    else false in
-  if p.ar_tpa = my_ip_address then
-    begin
-      if not merge_flag then
-        Result (p.ar_sha, Unix.time ())
-        |> Hashtbl.add st p.ar_spa;
+  ;;
 
-      if p.ar_op = Request then
-        {
-          ar_hrd = 1;
-          ar_pro = 6;
-          ar_hln = 6;
-          ar_pln = 4;
-          ar_op = Reply;
-          ar_sha = my_mac_address;
-          ar_spa = my_ip_address;
-          ar_tha = p.ar_sha;
-          ar_tpa = p.ar_spa;
-        }
-        |> send
-    end
-;;
-
-(*FIXME purge?*)
-(*Walks the cache, removing expired entries.*)
-let expire state = failwith "TODO";;
+  (*FIXME purge?*)
+  (*Walks the cache, removing expired entries.*)
+  let expire state = failwith "TODO";;
 
 end;;
 
