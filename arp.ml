@@ -157,6 +157,8 @@ struct
   ;;
 
   let addr_in_addrlist addr =
+    (*NOTE this lookup could be done more efficiently, but we'd need access to
+      the concrete representation of the addresses.*)
     List.exists (fun addr' -> Ipaddr.V4.compare addr addr' = 0)
   ;;
 
