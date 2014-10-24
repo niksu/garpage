@@ -16,14 +16,17 @@
    - Block until we can complete the evaluation (or time out).
 
    In each case, what's persistent, and what's transient?
-   - Persistent: current config of the database: mappings from IPs to MACs.
-       Also include waiting lists?
-       Also, what needs to be done in case db is reloaded?
-        This reduces to figuring out what to do in case a MAC address for an IP
-          address is updated. Do we go back in time and tell every past caller?
-          Or do we rely on them to recheck?
-          This is not really needed, since we expire values based on age.
-          So in the worst case, we could start with an empty database.
+   - Persistent: current config of the database:
+       * mappings from IPs to MACs
+       * also IP addresses we have bound to the interface?
+       * Other?
+         Also include waiting lists?
+         Also, what needs to be done in case db is reloaded?
+          This reduces to figuring out what to do in case a MAC address for an IP
+            address is updated. Do we go back in time and tell every past caller?
+            Or do we rely on them to recheck?
+            This is not really needed, since we expire values based on age.
+            So in the worst case, we could start with an empty database.
    - Transient: timeouts of lookups, ages of values, and associated state.
 
   How is all this different from the state info that's kept at other layers in
