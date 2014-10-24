@@ -153,15 +153,17 @@ struct
     }
   ;;
 
+  let addr_in_addrlist addr =
+    List.exists (fun addr' -> Ipaddr.V4.compare addr addr' = 0)
+  ;;
+
   let bind_ip_address (st : state) (ip_addr : Ipaddr.V4.t) =
-    (*FIXME might need to use Ipaddr's comparator*)
-    assert (not (List.mem ip_addr st.protocol_addresses));
+    assert (not (addr_in_addrlist ip_addr st.protocol_addresses));
     { st with protocol_addresses = ip_addr :: st.protocol_addresses}
   ;;
 
   let unbind_ip_address_exn (st : state) (ip_addr : Ipaddr.V4.t) =
-    (*FIXME might need to use Ipaddr's comparator*)
-    assert (List.mem ip_addr st.protocol_addresses);
+    assert (addr_in_addrlist ip_addr st.protocol_addresses);
     failwith "TODO"
   ;;
 
@@ -211,8 +213,7 @@ struct
           true
         end
       else false in
-    if List.mem p.ar_tpa st.protocol_addresses then (*FIXME might need to use
-                                                      Ipaddr's comparator*)
+    if addr_in_addrlist p.ar_tpa st.protocol_addresses then
       begin
         if not merge_flag then
           Result (p.ar_sha, Unix.time ())
