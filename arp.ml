@@ -167,9 +167,15 @@ struct
     { st with protocol_addresses = ip_addr :: st.protocol_addresses}
   ;;
 
-  let unbind_ip_address_exn (st : state) (ip_addr : Ipaddr.V4.t) =
+  let unbind_ip_address (st : state) (ip_addr : Ipaddr.V4.t) =
     assert (addr_in_addrlist ip_addr st.protocol_addresses);
-    failwith "TODO"
+    { st with protocol_addresses =
+                (*NOTE improvement: since addresses only appear at most once in
+                  the list, we could stop the filter as soon as we hit the
+                  address, and append the rest of the list.*)
+                List.filter (fun ip_addr' ->
+                  Ipaddr.V4.compare ip_addr ip_addr' <> 0)
+                  st.protocol_addresses}
   ;;
 
   (*Performs the lookup on the table. It queries the network in these cases:
