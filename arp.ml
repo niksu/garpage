@@ -116,8 +116,8 @@ type arp_packet_format = {
   (*FIXME use polymorphic variants instead of ints. Can then implement the
     checks in the algorithm more easily -- e.g., "?Do I have the hardware type
     in ar$hrd?"*)
-  ar_hrd : int; (*NOTE must be = 1*)
-  ar_pro : int; (*NOTE must be = 6*)
+  ar_hrd : int; (*NOTE must be = 1, since we only consider Ethernet here*)
+  ar_pro : int; (*NOTE must be = 6, since we only consider IPv4 here*)
   ar_hln : int; (*NOTE must be = 6*)
   ar_pln : int; (*NOTE must be = 4*)
   ar_op : arp_op;
@@ -190,6 +190,7 @@ struct
   (*Performs the lookup on the table. It queries the network in these cases:
     - Table lacks an entry for the key we're looking for.
     - The table entry has aged too much.
+    NOTE side-effect: might change the Hashtbl.t value in st.
   *)
   let lookup (st : state) (ip_addr : Ipaddr.V4.t) : Macaddr.t option =
     if Hashtbl.mem st.address_mapping ip_addr then
@@ -216,10 +217,9 @@ struct
     failwith "TODO"
   ;;
 
-  (*Implements the algorithm described under "Packet Reception" in RFC826*)
+  (*Implements the algorithm described under "Packet Reception" in RFC826.
+    NOTE side-effect: might change the Hashtbl.t value.*)
   let receive (st : state) (p : arp_packet_format) =
-    (*FIXME Hashtbl.t is mutable, and here we don't avoid mutating the existing
-      state value*)
     (*NOTE these invariants were stated in comments earlier*)
     assert (p.ar_hrd = 1);
     assert (p.ar_pro = 6);
