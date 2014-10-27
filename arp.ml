@@ -202,10 +202,14 @@ struct
         None
       | Result (mac_addr, ts) ->
         if ts < Unix.time () -. Params.max_entry_age then
-          (); (*FIXME resend request. Could also change the table, to remove the
-                entry. Shall we do this eagerly or lazily?*)
-        (*NOTE we only guarantee freshness until "age" value.*)
-        Some mac_addr
+          begin
+            (); (*FIXME resend request. Could also change the table, to remove the
+                  entry. Shall we do this eagerly or lazily?*)
+            None
+          end
+        else
+          (*NOTE we only guarantee freshness until "age" value.*)
+          Some mac_addr
     else
       (*FIXME here should make non-blocking call to request an ARP record from the
         network*)
