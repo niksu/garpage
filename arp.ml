@@ -2,7 +2,7 @@
    We want to represent a partial function:
    IP_addr -> MAC_addr
    But the evaluation of this function is weird: we don't have all of its
-   evaluatio at the same time. Moreover, its value can vary over time, as hosts
+   graph at the same time. Moreover, its value can vary over time, as hosts
    join and leave the network.
 
    Ideas:
@@ -12,8 +12,12 @@
    "Packet Generation".
    - If we cannot complete the evaluation, then return immediately to the client
    with a subscription to a waiting list that will be advised as soon as we have
-   a value (or will timeout).
-   - Block until we can complete the evaluation (or time out).
+   a value (or will timeout). This is the approach currently used in Mirage (but
+   excluding timeouts).
+   - Block until we can complete the evaluation (or time out). Blocking at this
+   level would not be ideal.
+   - Instead of broadcasting a request, we could first try querying the
+   last-known-host with that address (if we know of one).
 
    In each case, what's persistent, and what's transient?
    - Persistent: current config of the database:
@@ -26,7 +30,7 @@
             address is updated. Do we go back in time and tell every past caller?
             Or do we rely on them to recheck?
             This is not really needed, since we expire values based on age.
-            So in the worst case, we could start with an empty database.
+            So in the worst case, we would start with an empty database.
    - Transient: timeouts of lookups, ages of values, and associated state.
 
   How is all this different from the state info that's kept at other layers in
@@ -39,18 +43,22 @@
   Consequently, it should always be the case that ar$hln=6 (bytes) and ar$pln=4.
 *)
 
-(*NOTE I'm assuming that ethernet packet has been parsed according to
+(*NOTE I'm assuming that ethernet packet has been parsed according to the
   "Packet format" section of RFC826. For ARP code to be run, the Protocol Type
   field of the Ethernet packet header must be ether_type$ADDRESS_RESOLUTION.
 *)
 
-(*
-  NOTE (needs to be refined)
-   Assumes source-related info is correct.
-   Ignores target-related info, even if arest_op$REPLY.
+(*NOTE on overall behaviour, based on RFC826:
+  - We assume that source-related info is correct. (That is, we assume that
+  nobody on the network might be spoofing.)
+  - The ares_op$REPLY opcode has a rather passive semantics, in the sense that
+  it only seems to serve to avoid a reply from being sent (as would be the case
+  if the ares_op$REQUEST opcode were used) from the targe.
+  - A host isregards replies&requests targetted at others, unless the
+  reply/request relates to a mapping for an address that's in its ARP table.
 *)
 
-(* From RFC826:
+(*NOTE from RFC826:
 "The protocol described in this paper distributes information as
 it is needed, and only once (probably) per boot of a machine."
 
@@ -79,6 +87,7 @@ Notes for parsers:
 TODO
 - Timeout - for query REQUEST
 - Aging - reverse it when receive packets from that host
+- Retransmission count - for timed-out requests
 - Deletion of entry upon detection of unreachability
 - Implementing the 5527 protocol: probing to check if the address is available,
    etc.
@@ -133,8 +142,8 @@ type entry_state =
 
 type state =
   {
-    (*NOTE to implement the RFC properly, we could not require the protocol to
-      be IPv4*)
+    (*NOTE to implement RFC826 properly, we cannot require the protocol to
+      be IPv4 as done here*)
     protocol_addresses : Ipaddr.V4.t list;
     address_mapping : (Ipaddr.V4.t, entry_state) Hashtbl.t
   }
