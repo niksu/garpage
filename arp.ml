@@ -198,6 +198,9 @@ struct
       match Hashtbl.find st.address_mapping ip_addr with
       | Waiting ts ->
         if ts < Unix.time () -. Params.request_timeout then
+          (*NOTE here would increment retransmission count, and check if limit
+            has been reached. This state info could be added to the "Waiting"
+            record.*)
           (); (*FIXME resend request*)
         None
       | Result (mac_addr, ts) ->
