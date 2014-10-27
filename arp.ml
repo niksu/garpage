@@ -88,6 +88,7 @@ TODO
 - Timeout - for query REQUEST
 - Aging - reverse it when receive packets from that host
 - Retransmission count - for timed-out requests
+- How often to "GC" on the table, to remove expired entries
 - Deletion of entry upon detection of unreachability
 - Implementing the 5527 protocol: probing to check if the address is available,
    etc.
