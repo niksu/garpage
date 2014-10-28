@@ -128,8 +128,12 @@ type arp_packet_format = {
   ar_tpa : Ipaddr.V4.t;
 };;
 
-(*FIXME is there a Mirage equivalent for this? Also for Unix.time*)
 type timestamp = float;;
+
+module type TIME_SERVICE = sig
+  (*Obtain the current time*)
+  val time : unit -> timestamp
+end
 
 type entry_state =
   (*Address value, and the (local) timestamp the value was added.
@@ -153,6 +157,7 @@ type state =
 
 module Make (N : V1.NETWORK with
               type macaddr = Macaddr.t)
+         (Time_Service : TIME_SERVICE)
          (Params : Arp_Params) =
 struct
 
@@ -197,14 +202,14 @@ struct
     if Hashtbl.mem st.address_mapping ip_addr then
       match Hashtbl.find st.address_mapping ip_addr with
       | Waiting ts ->
-        if ts < Unix.time () -. Params.request_timeout then
+        if ts < Time_Service.time () -. Params.request_timeout then
           (*NOTE here would increment retransmission count, and check if limit
             has been reached. This state info could be added to the "Waiting"
             record.*)
           (); (*FIXME resend request*)
         None
       | Result (mac_addr, ts) ->
-        if ts < Unix.time () -. Params.max_entry_age then
+        if ts < Time_Service.time () -. Params.max_entry_age then
           begin
             (); (*FIXME resend request. Could also change the table, to remove the
                   entry. Shall we do this eagerly or lazily?*)
@@ -236,7 +241,7 @@ struct
     let merge_flag =
       if Hashtbl.mem st.address_mapping p.ar_spa then
         begin
-          Result (p.ar_sha, Unix.time ())
+          Result (p.ar_sha, Time_Service.time ())
           |> Hashtbl.replace st.address_mapping p.ar_spa;
           true
         end
@@ -244,7 +249,7 @@ struct
     if addr_in_addrlist p.ar_tpa st.protocol_addresses then
       begin
         if not merge_flag then
-          Result (p.ar_sha, Unix.time ())
+          Result (p.ar_sha, Time_Service.time ())
           |> Hashtbl.add st.address_mapping p.ar_spa;
 
         if p.ar_op = Request then
@@ -272,6 +277,9 @@ end;;
 
 module Test_Arp =
   Make ((*FIXME get this from Mirage*))
+    (struct
+      let time = Unix.time
+      end)
     (struct
       (*NOTE all these values are fudges*)
       let init_table_size = 0
