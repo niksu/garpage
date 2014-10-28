@@ -96,7 +96,7 @@ TODO
 *)
 
 
-module type Arp_Params = sig
+module type ARP_PARAMS = sig
   (*Initial size of the hashtable.*)
   val init_table_size : int
   (*Seconds before an ARP request is considered to have timed out.*)
@@ -158,7 +158,7 @@ type state =
 module Make (N : V1.NETWORK with
               type macaddr = Macaddr.t)
          (Time_Service : TIME_SERVICE)
-         (Params : Arp_Params) =
+         (Params : ARP_PARAMS) =
 struct
 
   (*FIXME hack: should take this as parameter*)
