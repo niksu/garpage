@@ -105,6 +105,10 @@ module type ARP_PARAMS = sig
   val max_entry_age : float
 end
 
+let address_width_of = function
+  | `Ethernet -> 6
+  | `IPv4 -> 4
+
 (*Raw ARP opcodes*)
 (*FIXME classify them into more refined set of operations, based on RFC5527?*)
 type arp_op =
@@ -117,10 +121,10 @@ type arp_packet_format = {
   (*FIXME use polymorphic variants instead of ints. Can then implement the
     checks in the algorithm more easily -- e.g., "?Do I have the hardware type
     in ar$hrd?"*)
-  ar_hrd : int; (*NOTE must be = 1, since we only consider Ethernet here*)
-  ar_pro : int; (*NOTE must be = 6, since we only consider IPv4 here*)
-  ar_hln : int; (*NOTE must be = 6*)
-  ar_pln : int; (*NOTE must be = 4*)
+  ar_hrd : [`Ethernet]; (*NOTE we only consider Ethernet here*)
+  ar_pro : [`IPv4]; (*NOTE we only consider IPv4 here*)
+  ar_hln : int; (*NOTE must be = 6, since we only consider Ethernet here*)
+  ar_pln : int; (*NOTE must be = 4, since we only consider IPv4 here*)
   ar_op : arp_op;
   ar_sha : Macaddr.t;
   ar_spa : Ipaddr.V4.t;
@@ -234,10 +238,10 @@ struct
     NOTE side-effect: might change the Hashtbl.t value.*)
   let receive (st : state) (p : arp_packet_format) =
     (*NOTE these invariants were stated in comments earlier*)
-    assert (p.ar_hrd = 1);
-    assert (p.ar_pro = 6);
-    assert (p.ar_hln = 6);
-    assert (p.ar_pln = 4);
+    assert (p.ar_hrd = `Ethernet);
+    assert (p.ar_pro = `IPv4);
+    assert (p.ar_hln = address_width_of `Ethernet);
+    assert (p.ar_pln = address_width_of `IPv4);
     let merge_flag =
       if Hashtbl.mem st.address_mapping p.ar_spa then
         begin
@@ -254,10 +258,10 @@ struct
 
         if p.ar_op = Request then
           {
-            ar_hrd = 1;
-            ar_pro = 6;
-            ar_hln = 6;
-            ar_pln = 4;
+            ar_hrd = `Ethernet;
+            ar_pro = `IPv4;
+            ar_hln = address_width_of `Ethernet;
+            ar_pln = address_width_of `IPv4;
             ar_op = Reply;
             ar_sha = N.mac device_state;
             ar_spa = p.ar_tpa;
