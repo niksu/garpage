@@ -158,6 +158,20 @@ type state =
   }
 ;;
 
+(*Packet prefix is always the same: specialised for Ethernet and IPv4*)
+let make_packet ~ar_op ~ar_sha ~ar_spa ~ar_tha ~ar_tpa : arp_packet_format =
+  {
+    ar_hrd = `Ethernet;
+    ar_pro = `IPv4;
+    ar_hln = address_width_of `Ethernet;
+    ar_pln = address_width_of `IPv4;
+    ar_op = ar_op;
+    ar_sha = ar_sha;
+    ar_spa = ar_tpa;
+    ar_tha = ar_tha;
+    ar_tpa = ar_tpa;
+  }
+
 
 module Make (N : V1.NETWORK with
               type macaddr = Macaddr.t)
@@ -197,6 +211,12 @@ struct
                   st.protocol_addresses}
   ;;
 
+  (*TODO i think need to use N.write, but need to define buffer type before
+    that.*)
+  let send (p : arp_packet_format) (*interface*) =
+    failwith "TODO"
+  ;;
+
   (*Performs the lookup on the table. It queries the network in these cases:
     - Table lacks an entry for the key we're looking for.
     - The table entry has aged too much.
@@ -206,11 +226,22 @@ struct
     if Hashtbl.mem st.address_mapping ip_addr then
       match Hashtbl.find st.address_mapping ip_addr with
       | Waiting ts ->
+        (*If we've exceeded the request timeout then resend the request*)
         if ts < Time_Service.time () -. Params.request_timeout then
-          (*NOTE here would increment retransmission count, and check if limit
-            has been reached. This state info could be added to the "Waiting"
-            record.*)
-          (); (*FIXME resend request*)
+          begin
+            (*NOTE here would increment retransmission count, and check if limit
+              has been reached. This state info could be added to the "Waiting"
+              record.*)
+            make_packet
+              ~ar_op:Request
+              ~ar_sha:(N.mac device_state)
+              ~ar_spa:(failwith "IP?")(*FIXME which IP address to use?*)
+              ~ar_tha:(N.mac device_state) (*This doesn't matter*)
+              ~ar_tpa:ip_addr
+            |> send;
+            Waiting (Time_Service.time ())
+            |> Hashtbl.replace st.address_mapping ip_addr;
+          end;
         None
       | Result (mac_addr, ts) ->
         if ts < Time_Service.time () -. Params.max_entry_age then
@@ -229,12 +260,6 @@ struct
         need to recreate it, but I don't think it would buy us much in this
         setting.*)
       None
-  ;;
-
-  (*TODO i think need to use N.write, but need to define buffer type before
-    that.*)
-  let send (p : arp_packet_format) (*interface*) =
-    failwith "TODO"
   ;;
 
   (*Implements the algorithm described under "Packet Reception" in RFC826.
@@ -260,17 +285,12 @@ struct
           |> Hashtbl.add st.address_mapping p.ar_spa;
 
         if p.ar_op = Request then
-          {
-            ar_hrd = `Ethernet;
-            ar_pro = `IPv4;
-            ar_hln = address_width_of `Ethernet;
-            ar_pln = address_width_of `IPv4;
-            ar_op = Reply;
-            ar_sha = N.mac device_state;
-            ar_spa = p.ar_tpa;
-            ar_tha = p.ar_sha;
-            ar_tpa = p.ar_spa;
-          }
+          make_packet
+            ~ar_op:Reply
+            ~ar_sha:(N.mac device_state)
+            ~ar_spa:p.ar_tpa
+            ~ar_tha:p.ar_sha
+            ~ar_tpa:p.ar_spa
           |> send
       end
   ;;
