@@ -225,6 +225,9 @@ struct
     else
       (*FIXME here should make non-blocking call to request an ARP record from the
         network*)
+      (*NOTE could cache request, so that if we later need to resend it we won't
+        need to recreate it, but I don't think it would buy us much in this
+        setting.*)
       None
   ;;
 
