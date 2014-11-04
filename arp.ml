@@ -97,12 +97,18 @@ TODO
 
 
 module type ARP_PARAMS = sig
+  type network_device_state
   (*Initial size of the hashtable.*)
   val init_table_size : int
   (*Seconds before an ARP request is considered to have timed out.*)
   val request_timeout : float
   (*Seconds before an entry in the table is considered to have expired.*)
   val max_entry_age : float
+  (*This identifies the network device, wrt to the network interface used --
+    i.e., parameter N to Make below*)
+  val device_state : network_device_state (*FIXME refer to device state, or can
+                                            we refer to a device identifier
+                                            instead?*)
 end
 
 let address_width_of = function
@@ -176,11 +182,9 @@ let make_packet ~ar_op ~ar_sha ~ar_spa ~ar_tha ~ar_tpa : arp_packet_format =
 module Make (N : V1.NETWORK with
               type macaddr = Macaddr.t)
          (Time_Service : TIME_SERVICE)
-         (Params : ARP_PARAMS) =
+         (Params : ARP_PARAMS with
+           type network_device_state = N.t) =
 struct
-
-  (*FIXME hack: should take this as parameter*)
-  let device_state : N.t = failwith "Some ID"
 
   let empty_state () : state =
     {
@@ -234,9 +238,9 @@ struct
               record.*)
             make_packet
               ~ar_op:Request
-              ~ar_sha:(N.mac device_state)
+              ~ar_sha:(N.mac Params.device_state)
               ~ar_spa:(failwith "IP?")(*FIXME which IP address to use?*)
-              ~ar_tha:(N.mac device_state) (*This doesn't matter*)
+              ~ar_tha:(N.mac Params.device_state) (*This doesn't matter*)
               ~ar_tpa:ip_addr
             |> send;
             Waiting (Time_Service.time ())
@@ -287,7 +291,7 @@ struct
         if p.ar_op = Request then
           make_packet
             ~ar_op:Reply
-            ~ar_sha:(N.mac device_state)
+            ~ar_sha:(N.mac Params.device_state)
             ~ar_spa:p.ar_tpa
             ~ar_tha:p.ar_sha
             ~ar_tpa:p.ar_spa
@@ -312,4 +316,5 @@ module Test_Arp =
       let init_table_size = 0
       let request_timeout = 300.
       let max_entry_age = 300.
+      let device_state = failwith "Some ID" (*FIXME*)
     end)
