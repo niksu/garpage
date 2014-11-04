@@ -97,7 +97,7 @@ TODO
 
 
 module type ARP_PARAMS = sig
-  type network_device_state
+  type network_device_id
   (*Initial size of the hashtable.*)
   val init_table_size : int
   (*Seconds before an ARP request is considered to have timed out.*)
@@ -106,9 +106,7 @@ module type ARP_PARAMS = sig
   val max_entry_age : float
   (*This identifies the network device, wrt to the network interface used --
     i.e., parameter N to Make below*)
-  val device_state : network_device_state (*FIXME refer to device state, or can
-                                            we refer to a device identifier
-                                            instead?*)
+  val device_id : network_device_id
 end
 
 let address_width_of = function
@@ -143,6 +141,12 @@ type timestamp = float;;
 module type TIME_SERVICE = sig
   (*Obtain the current time*)
   val time : unit -> timestamp
+end
+
+module type MONAD = sig
+  type +'a m
+  val return : 'a -> 'a m
+  val (>>=) : 'a m -> ('a -> 'b m) -> 'b m
 end
 
 type entry_state =
@@ -182,9 +186,29 @@ let make_packet ~ar_op ~ar_sha ~ar_spa ~ar_tha ~ar_tpa : arp_packet_format =
 module Make (N : V1.NETWORK with
               type macaddr = Macaddr.t)
          (Time_Service : TIME_SERVICE)
+         (*Without the IO structure we cannot compute over 'a N.io.
+           IO could be implemented using Lwt, Async, etc.*)
+         (IO : MONAD with
+           type 'a m = 'a N.io)
          (Params : ARP_PARAMS with
-           type network_device_state = N.t) =
+           type network_device_id = N.id) =
 struct
+  open IO
+
+  let device_state : N.t m =
+    (N.connect Params.device_id) >>= (fun state ->
+    match state with
+    | `Error error ->
+      (
+        match error with
+        | `Unknown s -> failwith ("Unknown network error: " ^ s)
+        | `Unimplemented ->
+          failwith "Network error: Operation not yet implemented in the code"
+        | `Disconnected ->
+          failwith "Network error: The device has been previously disconnected"
+      )
+    | `Ok state -> return state)
+  ;;
 
   let empty_state () : state =
     {
@@ -226,7 +250,9 @@ struct
     - The table entry has aged too much.
     NOTE side-effect: might change the Hashtbl.t value in st.
   *)
-  let lookup (st : state) (ip_addr : Ipaddr.V4.t) : Macaddr.t option =
+  let lookup (st : state) (ip_addr : Ipaddr.V4.t) : Macaddr.t option m =
+    device_state >>= (fun device_state ->
+    let mac_address = N.mac device_state in
     if Hashtbl.mem st.address_mapping ip_addr then
       match Hashtbl.find st.address_mapping ip_addr with
       | Waiting ts ->
@@ -238,37 +264,40 @@ struct
               record.*)
             make_packet
               ~ar_op:Request
-              ~ar_sha:(N.mac Params.device_state)
+              ~ar_sha:mac_address
               ~ar_spa:(failwith "IP?")(*FIXME which IP address to use?*)
-              ~ar_tha:(N.mac Params.device_state) (*This doesn't matter*)
+              ~ar_tha:mac_address (*RFC826 says that this value doesn't
+                                    matter in this setting.*)
               ~ar_tpa:ip_addr
             |> send;
             Waiting (Time_Service.time ())
             |> Hashtbl.replace st.address_mapping ip_addr;
           end;
-        None
+        return None
       | Result (mac_addr, ts) ->
         if ts < Time_Service.time () -. Params.max_entry_age then
           begin
             (); (*FIXME resend request. Could also change the table, to remove the
                   entry. Shall we do this eagerly or lazily?*)
-            None
+            return None
           end
         else
           (*NOTE we only guarantee freshness until "age" value.*)
-          Some mac_addr
+          return (Some mac_addr)
     else
       (*FIXME here should make non-blocking call to request an ARP record from the
         network*)
       (*NOTE could cache request, so that if we later need to resend it we won't
         need to recreate it, but I don't think it would buy us much in this
         setting.*)
-      None
+      return None)
   ;;
 
   (*Implements the algorithm described under "Packet Reception" in RFC826.
     NOTE side-effect: might change the Hashtbl.t value.*)
   let receive (st : state) (p : arp_packet_format) =
+    device_state >>= (fun device_state ->
+    let mac_address = N.mac device_state in
     (*NOTE these invariants were stated in comments earlier*)
     assert (p.ar_hrd = `Ethernet);
     assert (p.ar_pro = `IPv4);
@@ -291,12 +320,13 @@ struct
         if p.ar_op = Request then
           make_packet
             ~ar_op:Reply
-            ~ar_sha:(N.mac Params.device_state)
+            ~ar_sha:mac_address
             ~ar_spa:p.ar_tpa
             ~ar_tha:p.ar_sha
             ~ar_tpa:p.ar_spa
           |> send
-      end
+      end;
+    return ())
   ;;
 
   (*FIXME purge?*)
