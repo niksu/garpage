@@ -122,9 +122,6 @@ type arp_op =
 
 (*NOTE excludes Ethernet header info*)
 type arp_packet_format = {
-  (*FIXME use polymorphic variants instead of ints. Can then implement the
-    checks in the algorithm more easily -- e.g., "?Do I have the hardware type
-    in ar$hrd?"*)
   ar_hrd : [`Ethernet]; (*NOTE we only consider Ethernet here*)
   ar_pro : [`IPv4]; (*NOTE we only consider IPv4 here*)
   ar_hln : int; (*NOTE must be = 6, since we only consider Ethernet here*)
@@ -346,5 +343,5 @@ module Test_Arp =
       let init_table_size = 0
       let request_timeout = 300.
       let max_entry_age = 300.
-      let device_state = failwith "Some ID" (*FIXME*)
+      let device_state = failwith "Some ID" (*FIXME obtain this from Mirage*)
     end)
